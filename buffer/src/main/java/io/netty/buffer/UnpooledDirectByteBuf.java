@@ -64,7 +64,7 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
         }
 
         this.alloc = alloc;
-        setByteBuffer(ByteBuffer.allocateDirect(initialCapacity));
+        setByteBuffer(allocateDirect(initialCapacity));
     }
 
     /**
@@ -561,7 +561,7 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
         if (buffer.hasArray()) {
             return in.read(buffer.array(), buffer.arrayOffset() + index, length);
         } else {
-            byte[] tmp = new byte[length];
+            byte[] tmp = PlatformDependent.allocateUninitializedArray(length);
             int readBytes = in.read(tmp);
             if (readBytes <= 0) {
                 return readBytes;

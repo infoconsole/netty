@@ -64,6 +64,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
@@ -132,6 +133,16 @@ public class SslHandlerTest {
         testHandshakeTimeout(false);
     }
 
+    private static SSLEngine newServerModeSSLEngine() throws NoSuchAlgorithmException {
+        SSLEngine engine = SSLContext.getDefault().createSSLEngine();
+        // Set the mode before we try to do the handshake as otherwise it may throw an IllegalStateException.
+        // See:
+        //  - https://docs.oracle.com/javase/10/docs/api/javax/net/ssl/SSLEngine.html#beginHandshake()
+        //  - http://mail.openjdk.java.net/pipermail/security-dev/2018-July/017715.html
+        engine.setUseClientMode(false);
+        return engine;
+    }
+
     private static void testHandshakeTimeout(boolean client) throws Exception {
         SSLEngine engine = SSLContext.getDefault().createSSLEngine();
         engine.setUseClientMode(client);
@@ -154,9 +165,7 @@ public class SslHandlerTest {
 
     @Test
     public void testTruncatedPacket() throws Exception {
-        SSLEngine engine = SSLContext.getDefault().createSSLEngine();
-        engine.setUseClientMode(false);
-
+        SSLEngine engine = newServerModeSSLEngine();
         EmbeddedChannel ch = new EmbeddedChannel(new SslHandler(engine));
 
         // Push the first part of a 5-byte handshake message.
@@ -182,9 +191,7 @@ public class SslHandlerTest {
 
     @Test
     public void testNonByteBufWriteIsReleased() throws Exception {
-        SSLEngine engine = SSLContext.getDefault().createSSLEngine();
-        engine.setUseClientMode(false);
-
+        SSLEngine engine = newServerModeSSLEngine();
         EmbeddedChannel ch = new EmbeddedChannel(new SslHandler(engine));
 
         AbstractReferenceCounted referenceCounted = new AbstractReferenceCounted() {
@@ -209,9 +216,7 @@ public class SslHandlerTest {
 
     @Test(expected = UnsupportedMessageTypeException.class)
     public void testNonByteBufNotPassThrough() throws Exception {
-        SSLEngine engine = SSLContext.getDefault().createSSLEngine();
-        engine.setUseClientMode(false);
-
+        SSLEngine engine = newServerModeSSLEngine();
         EmbeddedChannel ch = new EmbeddedChannel(new SslHandler(engine));
 
         try {
@@ -223,9 +228,7 @@ public class SslHandlerTest {
 
     @Test
     public void testIncompleteWriteDoesNotCompletePromisePrematurely() throws NoSuchAlgorithmException {
-        SSLEngine engine = SSLContext.getDefault().createSSLEngine();
-        engine.setUseClientMode(false);
-
+        SSLEngine engine = newServerModeSSLEngine();
         EmbeddedChannel ch = new EmbeddedChannel(new SslHandler(engine));
 
         ChannelPromise promise = ch.newPromise();
@@ -397,7 +400,8 @@ public class SslHandlerTest {
 
     @Test
     public void testCloseFutureNotified() throws Exception {
-        SslHandler handler = new SslHandler(SSLContext.getDefault().createSSLEngine());
+        SSLEngine engine = newServerModeSSLEngine();
+        SslHandler handler = new SslHandler(engine);
         EmbeddedChannel ch = new EmbeddedChannel(handler);
 
         ch.close();
@@ -415,7 +419,7 @@ public class SslHandlerTest {
 
     @Test(timeout = 5000)
     public void testEventsFired() throws Exception {
-        SSLEngine engine = SSLContext.getDefault().createSSLEngine();
+        SSLEngine engine = newServerModeSSLEngine();
         final BlockingQueue<SslCompletionEvent> events = new LinkedBlockingQueue<SslCompletionEvent>();
         EmbeddedChannel channel = new EmbeddedChannel(new SslHandler(engine), new ChannelInboundHandlerAdapter() {
             @Override
@@ -626,17 +630,24 @@ public class SslHandlerTest {
                     });
             sc = sb.bind(address).syncUninterruptibly().channel();
 
+            final AtomicReference<SslHandler> sslHandlerRef = new AtomicReference<SslHandler>();
             Bootstrap b = new Bootstrap()
                     .group(group)
                     .channel(LocalChannel.class)
                     .handler(new ChannelInitializer<Channel>() {
                         @Override
                         protected void initChannel(Channel ch) {
-                            ch.pipeline().addLast(sslClientCtx.newHandler(ch.alloc()));
+                            SslHandler handler = sslClientCtx.newHandler(ch.alloc());
+
+                            // We propagate the SslHandler via an AtomicReference to the outer-scope as using
+                            // pipeline.get(...) may return null if the pipeline was teared down by the time we call it.
+                            // This will happen if the channel was closed in the meantime.
+                            sslHandlerRef.set(handler);
+                            ch.pipeline().addLast(handler);
                         }
                     });
             cc = b.connect(sc.localAddress()).syncUninterruptibly().channel();
-            SslHandler handler = cc.pipeline().get(SslHandler.class);
+            SslHandler handler = sslHandlerRef.get();
             handler.handshakeFuture().awaitUninterruptibly();
             assertFalse(handler.handshakeFuture().isSuccess());
 

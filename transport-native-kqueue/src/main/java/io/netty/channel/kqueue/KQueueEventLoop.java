@@ -33,7 +33,6 @@ import java.io.IOException;
 import java.util.Queue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 import static io.netty.channel.kqueue.KQueueEventArray.deleteGlobalRefs;
@@ -67,17 +66,9 @@ final class KQueueEventLoop extends SingleThreadEventLoop {
             return kqueueWaitNow();
         }
     };
-    private final Callable<Integer> pendingTasksCallable = new Callable<Integer>() {
-        @Override
-        public Integer call() throws Exception {
-            return KQueueEventLoop.super.pendingTasks();
-        }
-    };
 
     private volatile int wakenUp;
     private volatile int ioRatio = 50;
-
-    static final long MAX_SCHEDULED_DAYS = 365 * 3;
 
     KQueueEventLoop(EventLoopGroup parent, Executor executor, int maxEvents,
                     SelectStrategy strategy, RejectedExecutionHandler rejectedExecutionHandler) {
@@ -217,6 +208,10 @@ final class KQueueEventLoop extends SingleThreadEventLoop {
                 switch (strategy) {
                     case SelectStrategy.CONTINUE:
                         continue;
+
+                    case SelectStrategy.BUSY_WAIT:
+                        // fall-through to SELECT since the busy-wait is not supported with kqueue
+
                     case SelectStrategy.SELECT:
                         strategy = kqueueWait(WAKEN_UP_UPDATER.getAndSet(this, 0) == 1);
 
@@ -304,14 +299,6 @@ final class KQueueEventLoop extends SingleThreadEventLoop {
                                                     : PlatformDependent.<Runnable>newMpscQueue(maxPendingTasks);
     }
 
-    @Override
-    public int pendingTasks() {
-        // As we use a MpscQueue we need to ensure pendingTasks() is only executed from within the EventLoop as
-        // otherwise we may see unexpected behavior (as size() is only allowed to be called by a single consumer).
-        // See https://github.com/netty/netty/issues/5297
-        return inEventLoop() ? super.pendingTasks() : submit(pendingTasksCallable).syncUninterruptibly().getNow();
-    }
-
     /**
      * Returns the percentage of the desired amount of time spent for I/O in the event loop.
      */
@@ -368,14 +355,6 @@ final class KQueueEventLoop extends SingleThreadEventLoop {
             Thread.sleep(1000);
         } catch (InterruptedException e) {
             // Ignore.
-        }
-    }
-
-    @Override
-    protected void validateScheduled(long amount, TimeUnit unit) {
-        long days = unit.toDays(amount);
-        if (days > MAX_SCHEDULED_DAYS) {
-            throw new IllegalArgumentException("days: " + days + " (expected: < " + MAX_SCHEDULED_DAYS + ')');
         }
     }
 }

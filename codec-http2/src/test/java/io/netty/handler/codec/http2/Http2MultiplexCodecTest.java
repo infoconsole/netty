@@ -28,17 +28,21 @@ import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpScheme;
 import io.netty.handler.codec.http2.Http2Exception.StreamException;
+import io.netty.handler.codec.http2.LastInboundHandler.Consumer;
 import io.netty.util.AsciiString;
 import io.netty.util.AttributeKey;
-
-import java.net.InetSocketAddress;
-import java.nio.channels.ClosedChannelException;
-import java.util.concurrent.atomic.AtomicBoolean;
-
+import io.netty.util.ReferenceCountUtil;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
+
+import java.net.InetSocketAddress;
+import java.nio.channels.ClosedChannelException;
+import java.util.ArrayDeque;
+import java.util.Queue;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static io.netty.util.ReferenceCountUtil.release;
 import static org.hamcrest.Matchers.instanceOf;
@@ -305,6 +309,43 @@ public class Http2MultiplexCodecTest {
     }
 
     @Test
+    public void outboundStreamShouldNotWriteResetFrameOnClose_IfStreamDidntExist() {
+        writer = new Writer() {
+            private boolean headersWritten;
+            @Override
+            void write(Object msg, ChannelPromise promise) {
+                // We want to fail to write the first headers frame. This is what happens if the connection
+                // refuses to allocate a new stream due to having received a GOAWAY.
+                if (!headersWritten && msg instanceof Http2HeadersFrame) {
+                    headersWritten = true;
+                    Http2HeadersFrame headersFrame = (Http2HeadersFrame) msg;
+                    final TestableHttp2MultiplexCodec.Stream stream =
+                            (TestableHttp2MultiplexCodec.Stream) headersFrame.stream();
+                    stream.id = 1;
+                    promise.setFailure(new Exception("boom"));
+                } else {
+                    super.write(msg, promise);
+                }
+            }
+        };
+
+        childChannelInitializer.handler = new ChannelInboundHandlerAdapter() {
+            @Override
+            public void channelActive(ChannelHandlerContext ctx) throws Exception {
+                ctx.writeAndFlush(new DefaultHttp2HeadersFrame(new DefaultHttp2Headers()));
+                ctx.fireChannelActive();
+            }
+        };
+
+        Channel childChannel = newOutboundStream();
+        assertFalse(childChannel.isActive());
+
+        childChannel.close();
+        parentChannel.runPendingTasks();
+        assertTrue(parentChannel.outboundMessages().isEmpty());
+    }
+
+    @Test
     public void inboundRstStreamFireChannelInactive() {
         LastInboundHandler inboundHandler = streamActiveAndWriteHeaders(inboundStream);
         assertTrue(inboundHandler.isChannelActive());
@@ -463,6 +504,7 @@ public class Http2MultiplexCodecTest {
         childChannel.close(p).syncUninterruptibly();
 
         assertFalse(channelOpen.get());
+        assertFalse(channelActive.get());
         assertFalse(childChannel.isActive());
     }
 
@@ -487,6 +529,46 @@ public class Http2MultiplexCodecTest {
         childChannel.close().syncUninterruptibly();
 
         assertFalse(channelOpen.get());
+        assertFalse(channelActive.get());
+        assertFalse(childChannel.isActive());
+    }
+
+    @Test
+    public void channelClosedWhenWriteFutureFails() {
+        final Queue<ChannelPromise> writePromises = new ArrayDeque<ChannelPromise>();
+        writer = new Writer() {
+            @Override
+            void write(Object msg, ChannelPromise promise) {
+                ReferenceCountUtil.release(msg);
+                writePromises.offer(promise);
+            }
+        };
+
+        LastInboundHandler inboundHandler = streamActiveAndWriteHeaders(inboundStream);
+        Http2StreamChannel childChannel = (Http2StreamChannel) inboundHandler.channel();
+
+        assertTrue(childChannel.isOpen());
+        assertTrue(childChannel.isActive());
+
+        final AtomicBoolean channelOpen = new AtomicBoolean(true);
+        final AtomicBoolean channelActive = new AtomicBoolean(true);
+
+        ChannelFuture f = childChannel.writeAndFlush(new DefaultHttp2HeadersFrame(new DefaultHttp2Headers()));
+        assertFalse(f.isDone());
+        f.addListener(new ChannelFutureListener() {
+            @Override
+            public void operationComplete(ChannelFuture future) throws Exception {
+                channelOpen.set(future.channel().isOpen());
+                channelActive.set(future.channel().isActive());
+            }
+        });
+
+        ChannelPromise first = writePromises.poll();
+        first.setFailure(new ClosedChannelException());
+        f.awaitUninterruptibly();
+
+        assertFalse(channelOpen.get());
+        assertFalse(channelActive.get());
         assertFalse(childChannel.isActive());
     }
 
@@ -583,6 +665,54 @@ public class Http2MultiplexCodecTest {
         assertFalse(channelActive.get());
     }
 
+    @Test
+    public void channelInactiveHappensAfterExceptionCaughtEvents() throws Exception {
+        final AtomicInteger count = new AtomicInteger(0);
+        final AtomicInteger exceptionCaught = new AtomicInteger(-1);
+        final AtomicInteger channelInactive = new AtomicInteger(-1);
+        final AtomicInteger channelUnregistered = new AtomicInteger(-1);
+        Http2StreamChannel childChannel = newOutboundStream();
+
+        childChannel.pipeline().addLast(new ChannelInboundHandlerAdapter() {
+
+            @Override
+            public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+                ctx.close();
+                throw new Exception("exception");
+            }
+        });
+
+        childChannel.pipeline().addLast(new ChannelInboundHandlerAdapter() {
+
+            @Override
+            public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+                channelInactive.set(count.getAndIncrement());
+                super.channelInactive(ctx);
+            }
+
+            @Override
+            public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+                exceptionCaught.set(count.getAndIncrement());
+                super.exceptionCaught(ctx, cause);
+            }
+
+            @Override
+            public void channelUnregistered(ChannelHandlerContext ctx) throws Exception {
+                channelUnregistered.set(count.getAndIncrement());
+                super.channelUnregistered(ctx);
+            }
+        });
+
+        childChannel.pipeline().fireUserEventTriggered(new Object());
+        parentChannel.runPendingTasks();
+
+        // The events should have happened in this order because the inactive and deregistration events
+        // get deferred as they do in the AbstractChannel.
+        assertEquals(0, exceptionCaught.get());
+        assertEquals(1, channelInactive.get());
+        assertEquals(2, channelUnregistered.get());
+    }
+
     @Ignore("not supported anymore atm")
     @Test
     public void cancellingWritesBeforeFlush() {
@@ -613,9 +743,197 @@ public class Http2MultiplexCodecTest {
         childChannel.closeFuture().syncUninterruptibly();
     }
 
+    @Test
+    public void endOfStreamDoesNotDiscardData() {
+        AtomicInteger numReads = new AtomicInteger(1);
+        final AtomicBoolean shouldDisableAutoRead = new AtomicBoolean();
+        Consumer<ChannelHandlerContext> ctxConsumer = new Consumer<ChannelHandlerContext>() {
+            @Override
+            public void accept(ChannelHandlerContext obj) {
+                if (shouldDisableAutoRead.get()) {
+                    obj.channel().config().setAutoRead(false);
+                }
+            }
+        };
+        LastInboundHandler inboundHandler = streamActiveAndWriteHeaders(inboundStream, numReads, ctxConsumer);
+        Http2StreamChannel childChannel = (Http2StreamChannel) inboundHandler.channel();
+        childChannel.config().setAutoRead(false);
+
+        Http2DataFrame dataFrame1 = new DefaultHttp2DataFrame(bb("1")).stream(inboundStream);
+        Http2DataFrame dataFrame2 = new DefaultHttp2DataFrame(bb("2")).stream(inboundStream);
+        Http2DataFrame dataFrame3 = new DefaultHttp2DataFrame(bb("3")).stream(inboundStream);
+        Http2DataFrame dataFrame4 = new DefaultHttp2DataFrame(bb("4")).stream(inboundStream);
+
+        assertEquals(new DefaultHttp2HeadersFrame(request).stream(inboundStream), inboundHandler.readInbound());
+
+        // We want to simulate the parent channel calling channelRead and delay calling channelReadComplete.
+        parentChannel.writeOneInbound(new Object());
+        codec.onHttp2Frame(dataFrame1);
+        assertEquals(dataFrame1, inboundHandler.readInbound());
+
+        // Deliver frames, and then a stream closed while read is inactive.
+        codec.onHttp2Frame(dataFrame2);
+        codec.onHttp2Frame(dataFrame3);
+        codec.onHttp2Frame(dataFrame4);
+
+        shouldDisableAutoRead.set(true);
+        childChannel.config().setAutoRead(true);
+        numReads.set(1);
+
+        inboundStream.state = Http2Stream.State.CLOSED;
+        codec.onHttp2StreamStateChanged(inboundStream);
+
+        // Detecting EOS should flush all pending data regardless of read calls.
+        assertEquals(dataFrame2, inboundHandler.readInbound());
+        assertEquals(dataFrame3, inboundHandler.readInbound());
+        assertEquals(dataFrame4, inboundHandler.readInbound());
+        assertNull(inboundHandler.readInbound());
+
+        // Now we want to call channelReadComplete and simulate the end of the read loop.
+        parentChannel.flushInbound();
+
+        childChannel.closeFuture().syncUninterruptibly();
+
+        dataFrame1.release();
+        dataFrame2.release();
+        dataFrame3.release();
+        dataFrame4.release();
+    }
+
+    @Test
+    public void childQueueIsDrainedAndNewDataIsDispatchedInParentReadLoopAutoRead() {
+        AtomicInteger numReads = new AtomicInteger(1);
+        final AtomicInteger channelReadCompleteCount = new AtomicInteger(0);
+        final AtomicBoolean shouldDisableAutoRead = new AtomicBoolean();
+        Consumer<ChannelHandlerContext> ctxConsumer = new Consumer<ChannelHandlerContext>() {
+            @Override
+            public void accept(ChannelHandlerContext obj) {
+                channelReadCompleteCount.incrementAndGet();
+                if (shouldDisableAutoRead.get()) {
+                    obj.channel().config().setAutoRead(false);
+                }
+            }
+        };
+        LastInboundHandler inboundHandler = streamActiveAndWriteHeaders(inboundStream, numReads, ctxConsumer);
+        Http2StreamChannel childChannel = (Http2StreamChannel) inboundHandler.channel();
+        childChannel.config().setAutoRead(false);
+
+        Http2DataFrame dataFrame1 = new DefaultHttp2DataFrame(bb("1")).stream(inboundStream);
+        Http2DataFrame dataFrame2 = new DefaultHttp2DataFrame(bb("2")).stream(inboundStream);
+        Http2DataFrame dataFrame3 = new DefaultHttp2DataFrame(bb("3")).stream(inboundStream);
+        Http2DataFrame dataFrame4 = new DefaultHttp2DataFrame(bb("4")).stream(inboundStream);
+
+        assertEquals(new DefaultHttp2HeadersFrame(request).stream(inboundStream), inboundHandler.readInbound());
+
+        // We want to simulate the parent channel calling channelRead and delay calling channelReadComplete.
+        parentChannel.writeOneInbound(new Object());
+        codec.onHttp2Frame(dataFrame1);
+        assertEquals(dataFrame1, inboundHandler.readInbound());
+
+        // We want one item to be in the queue, and allow the numReads to be larger than 1. This will ensure that
+        // when beginRead() is called the child channel is added to the readPending queue of the parent channel.
+        codec.onHttp2Frame(dataFrame2);
+
+        numReads.set(10);
+        shouldDisableAutoRead.set(true);
+        childChannel.config().setAutoRead(true);
+
+        codec.onHttp2Frame(dataFrame3);
+        codec.onHttp2Frame(dataFrame4);
+
+        // Detecting EOS should flush all pending data regardless of read calls.
+        assertEquals(dataFrame2, inboundHandler.readInbound());
+        assertEquals(dataFrame3, inboundHandler.readInbound());
+        assertEquals(dataFrame4, inboundHandler.readInbound());
+        assertNull(inboundHandler.readInbound());
+
+        // Now we want to call channelReadComplete and simulate the end of the read loop.
+        parentChannel.flushInbound();
+
+        // 3 = 1 for initialization + 1 for read when auto read was off + 1 for when auto read was back on
+        assertEquals(3, channelReadCompleteCount.get());
+
+        dataFrame1.release();
+        dataFrame2.release();
+        dataFrame3.release();
+        dataFrame4.release();
+    }
+
+    @Test
+    public void childQueueIsDrainedAndNewDataIsDispatchedInParentReadLoopNoAutoRead() {
+        AtomicInteger numReads = new AtomicInteger(1);
+        final AtomicInteger channelReadCompleteCount = new AtomicInteger(0);
+        final AtomicBoolean shouldDisableAutoRead = new AtomicBoolean();
+        Consumer<ChannelHandlerContext> ctxConsumer = new Consumer<ChannelHandlerContext>() {
+            @Override
+            public void accept(ChannelHandlerContext obj) {
+                channelReadCompleteCount.incrementAndGet();
+                if (shouldDisableAutoRead.get()) {
+                    obj.channel().config().setAutoRead(false);
+                }
+            }
+        };
+        LastInboundHandler inboundHandler = streamActiveAndWriteHeaders(inboundStream, numReads, ctxConsumer);
+        Http2StreamChannel childChannel = (Http2StreamChannel) inboundHandler.channel();
+        childChannel.config().setAutoRead(false);
+
+        Http2DataFrame dataFrame1 = new DefaultHttp2DataFrame(bb("1")).stream(inboundStream);
+        Http2DataFrame dataFrame2 = new DefaultHttp2DataFrame(bb("2")).stream(inboundStream);
+        Http2DataFrame dataFrame3 = new DefaultHttp2DataFrame(bb("3")).stream(inboundStream);
+        Http2DataFrame dataFrame4 = new DefaultHttp2DataFrame(bb("4")).stream(inboundStream);
+
+        assertEquals(new DefaultHttp2HeadersFrame(request).stream(inboundStream), inboundHandler.readInbound());
+
+        // We want to simulate the parent channel calling channelRead and delay calling channelReadComplete.
+        parentChannel.writeOneInbound(new Object());
+        codec.onHttp2Frame(dataFrame1);
+        assertEquals(dataFrame1, inboundHandler.readInbound());
+
+        // We want one item to be in the queue, and allow the numReads to be larger than 1. This will ensure that
+        // when beginRead() is called the child channel is added to the readPending queue of the parent channel.
+        codec.onHttp2Frame(dataFrame2);
+
+        numReads.set(2);
+        childChannel.read();
+        assertEquals(dataFrame2, inboundHandler.readInbound());
+        assertNull(inboundHandler.readInbound());
+
+        // This is the second item that was read, this should be the last until we call read() again. This should also
+        // notify of readComplete().
+        codec.onHttp2Frame(dataFrame3);
+        assertEquals(dataFrame3, inboundHandler.readInbound());
+
+        codec.onHttp2Frame(dataFrame4);
+        assertNull(inboundHandler.readInbound());
+
+        childChannel.read();
+        assertEquals(dataFrame4, inboundHandler.readInbound());
+        assertNull(inboundHandler.readInbound());
+
+        // Now we want to call channelReadComplete and simulate the end of the read loop.
+        parentChannel.flushInbound();
+
+        // 3 = 1 for initialization + 1 for first read of 2 items + 1 for second read of 2 items +
+        // 1 for parent channel readComplete
+        assertEquals(4, channelReadCompleteCount.get());
+
+        dataFrame1.release();
+        dataFrame2.release();
+        dataFrame3.release();
+        dataFrame4.release();
+    }
+
     private LastInboundHandler streamActiveAndWriteHeaders(Http2FrameStream stream) {
-        LastInboundHandler inboundHandler = new LastInboundHandler();
+        return streamActiveAndWriteHeaders(stream, null, LastInboundHandler.<ChannelHandlerContext>noopConsumer());
+    }
+
+    private LastInboundHandler streamActiveAndWriteHeaders(Http2FrameStream stream,
+                                                           AtomicInteger maxReads,
+                                                           Consumer<ChannelHandlerContext> contextConsumer) {
+
+        LastInboundHandler inboundHandler = new LastInboundHandler(contextConsumer);
         childChannelInitializer.handler = inboundHandler;
+        childChannelInitializer.maxReads = maxReads;
         assertFalse(inboundHandler.isChannelActive());
         ((TestableHttp2MultiplexCodec.Stream) stream).state = Http2Stream.State.OPEN;
         codec.onHttp2StreamStateChanged(stream);
@@ -652,7 +970,16 @@ public class Http2MultiplexCodecTest {
         assertNotNull(headersFrame);
         assertNotNull(headersFrame.stream());
         assertFalse(Http2CodecUtil.isStreamIdValid(headersFrame.stream().id()));
-        ((TestableHttp2MultiplexCodec.Stream) headersFrame.stream()).id = outboundStream.id();
+        TestableHttp2MultiplexCodec.Stream frameStream = (TestableHttp2MultiplexCodec.Stream) headersFrame.stream();
+        frameStream.id = outboundStream.id();
+        // Create the stream in the Http2Connection.
+        try {
+            Http2Stream stream = codec.connection().local().createStream(
+                    headersFrame.stream().id(), headersFrame.isEndStream());
+            frameStream.stream = stream;
+        } catch (Exception ex) {
+            throw new IllegalStateException("Failed to create a stream", ex);
+        }
 
         // Now read it and complete the write promise.
         assertSame(headersFrame, parentChannel.readOutbound());
@@ -670,7 +997,7 @@ public class Http2MultiplexCodecTest {
                                            Http2ConnectionDecoder decoder,
                                            Http2Settings initialSettings,
                                            ChannelHandler inboundStreamHandler) {
-            super(encoder, decoder, initialSettings, inboundStreamHandler);
+            super(encoder, decoder, initialSettings, inboundStreamHandler, null);
         }
 
         void onHttp2Frame(Http2Frame frame) {

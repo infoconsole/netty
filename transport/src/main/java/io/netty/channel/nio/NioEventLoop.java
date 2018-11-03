@@ -43,7 +43,6 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -69,12 +68,6 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         @Override
         public int get() throws Exception {
             return selectNow();
-        }
-    };
-    private final Callable<Integer> pendingTasksCallable = new Callable<Integer>() {
-        @Override
-        public Integer call() throws Exception {
-            return NioEventLoop.super.pendingTasks();
         }
     };
 
@@ -112,8 +105,6 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             logger.debug("-Dio.netty.selectorAutoRebuildThreshold: {}", SELECTOR_AUTO_REBUILD_THRESHOLD);
         }
     }
-
-    static final long MAX_SCHEDULED_DAYS = 365 * 3;
 
     /**
      * The NIO {@link Selector}.
@@ -181,8 +172,6 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             return new SelectorTuple(unwrappedSelector);
         }
 
-        final SelectedSelectionKeySet selectedKeySet = new SelectedSelectionKeySet();
-
         Object maybeSelectorImplClass = AccessController.doPrivileged(new PrivilegedAction<Object>() {
             @Override
             public Object run() {
@@ -198,8 +187,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         });
 
         if (!(maybeSelectorImplClass instanceof Class) ||
-                // ensure the current selector implementation is what we can instrument.
-                !((Class<?>) maybeSelectorImplClass).isAssignableFrom(unwrappedSelector.getClass())) {
+            // ensure the current selector implementation is what we can instrument.
+            !((Class<?>) maybeSelectorImplClass).isAssignableFrom(unwrappedSelector.getClass())) {
             if (maybeSelectorImplClass instanceof Throwable) {
                 Throwable t = (Throwable) maybeSelectorImplClass;
                 logger.trace("failed to instrument a special java.util.Set into: {}", unwrappedSelector, t);
@@ -208,6 +197,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
 
         final Class<?> selectorImplClass = (Class<?>) maybeSelectorImplClass;
+        final SelectedSelectionKeySet selectedKeySet = new SelectedSelectionKeySet();
 
         Object maybeException = AccessController.doPrivileged(new PrivilegedAction<Object>() {
             @Override
@@ -215,6 +205,23 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 try {
                     Field selectedKeysField = selectorImplClass.getDeclaredField("selectedKeys");
                     Field publicSelectedKeysField = selectorImplClass.getDeclaredField("publicSelectedKeys");
+
+                    if (PlatformDependent.javaVersion() >= 9 && PlatformDependent.hasUnsafe()) {
+                        // Let us try to use sun.misc.Unsafe to replace the SelectionKeySet.
+                        // This allows us to also do this in Java9+ without any extra flags.
+                        long selectedKeysFieldOffset = PlatformDependent.objectFieldOffset(selectedKeysField);
+                        long publicSelectedKeysFieldOffset =
+                                PlatformDependent.objectFieldOffset(publicSelectedKeysField);
+
+                        if (selectedKeysFieldOffset != -1 && publicSelectedKeysFieldOffset != -1) {
+                            PlatformDependent.putObject(
+                                    unwrappedSelector, selectedKeysFieldOffset, selectedKeySet);
+                            PlatformDependent.putObject(
+                                    unwrappedSelector, publicSelectedKeysFieldOffset, selectedKeySet);
+                            return null;
+                        }
+                        // We could not retrieve the offset, lets try reflection as last-resort.
+                    }
 
                     Throwable cause = ReflectionUtil.trySetAccessible(selectedKeysField, true);
                     if (cause != null) {
@@ -262,18 +269,6 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                                                     : PlatformDependent.<Runnable>newMpscQueue(maxPendingTasks);
     }
 
-    @Override
-    public int pendingTasks() {
-        // As we use a MpscQueue we need to ensure pendingTasks() is only executed from within the EventLoop as
-        // otherwise we may see unexpected behavior (as size() is only allowed to be called by a single consumer).
-        // See https://github.com/netty/netty/issues/5297
-        if (inEventLoop()) {
-            return super.pendingTasks();
-        } else {
-            return submit(pendingTasksCallable).syncUninterruptibly().getNow();
-        }
-    }
-
     /**
      * Registers an arbitrary {@link SelectableChannel}, not necessarily created by Netty, to the {@link Selector}
      * of this event loop.  Once the specified {@link SelectableChannel} is registered, the specified {@code task} will
@@ -299,7 +294,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
 
         try {
-            ch.register(selector, interestOps, task);
+            ch.register(unwrappedSelector, interestOps, task);
         } catch (Exception e) {
             throw new EventLoopException("failed to register a channel", e);
         }
@@ -397,7 +392,9 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             }
         }
 
-        logger.info("Migrated " + nChannels + " channel(s) to the new Selector.");
+        if (logger.isInfoEnabled()) {
+            logger.info("Migrated " + nChannels + " channel(s) to the new Selector.");
+        }
     }
 
     @Override
@@ -407,6 +404,10 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 switch (selectStrategy.calculateStrategy(selectNowSupplier, hasTasks())) {
                     case SelectStrategy.CONTINUE:
                         continue;
+
+                    case SelectStrategy.BUSY_WAIT:
+                        // fall-through to SELECT since the busy-wait is not supported with NIO
+
                     case SelectStrategy.SELECT:
                         select(wakenUp.getAndSet(false));
 
@@ -823,14 +824,6 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             selector.selectNow();
         } catch (Throwable t) {
             logger.warn("Failed to update SelectionKeys.", t);
-        }
-    }
-
-    @Override
-    protected void validateScheduled(long amount, TimeUnit unit) {
-        long days = unit.toDays(amount);
-        if (days > MAX_SCHEDULED_DAYS) {
-            throw new IllegalArgumentException("days: " + days + " (expected: < " + MAX_SCHEDULED_DAYS + ')');
         }
     }
 }
