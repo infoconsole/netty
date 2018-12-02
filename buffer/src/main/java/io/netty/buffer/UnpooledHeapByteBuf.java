@@ -251,12 +251,22 @@ public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
         return readBytes;
     }
 
+    /**
+     * 设置bytes
+     * @param index
+     * @param src
+     * @param srcIndex the first index of the source
+     * @param length   the number of bytes to transfer
+     *
+     * @return
+     */
     @Override
     public ByteBuf setBytes(int index, ByteBuf src, int srcIndex, int length) {
         checkSrcIndex(index, length, srcIndex, src.capacity());
         if (src.hasMemoryAddress()) {
             PlatformDependent.copyMemory(src.memoryAddress() + srcIndex, array, index, length);
         } else  if (src.hasArray()) {
+            //setBytes(0, this, readerIndex, writerIndex - readerIndex);
             setBytes(index, src.array(), src.arrayOffset() + srcIndex, length);
         } else {
             src.getBytes(srcIndex, array, index, length);
@@ -337,6 +347,11 @@ public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
         return HeapByteBufUtil.getByte(array, index);
     }
 
+    /**
+     * 获取值的short类型  2个字节
+     * @param index
+     * @return
+     */
     @Override
     public short getShort(int index) {
         ensureAccessible();

@@ -55,6 +55,8 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
      * @param args              arguments which will passed to each {@link #newChild(Executor, Object...)} call
      */
     protected MultithreadEventExecutorGroup(int nThreads, Executor executor, Object... args) {
+        //this(cpu * 2 ,null ,DefaultEventExecutorChooserFactory ,args)
+        //args =  KQueueSelectorProvider  ,  DefaultSelectStrategyFactory  ,  RejectedExecutionHandlers.REJECT
         this(nThreads, executor, DefaultEventExecutorChooserFactory.INSTANCE, args);
     }
 
@@ -68,6 +70,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
      */
     protected MultithreadEventExecutorGroup(int nThreads, Executor executor,
                                             EventExecutorChooserFactory chooserFactory, Object... args) {
+        //默认服务器CPU核数*2
         if (nThreads <= 0) {
             throw new IllegalArgumentException(String.format("nThreads: %d (expected: > 0)", nThreads));
         }
@@ -81,6 +84,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
         for (int i = 0; i < nThreads; i ++) {
             boolean success = false;
             try {
+                //创建EventLoop
                 children[i] = newChild(executor, args);
                 success = true;
             } catch (Exception e) {

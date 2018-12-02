@@ -26,6 +26,7 @@ public interface ChannelOutboundInvoker {
     /**
      * Request to bind to the given {@link SocketAddress} and notify the {@link ChannelFuture} once the operation
      * completes, either because the operation was successful or because of an error.
+     * 请求绑定到给定的{@link SocketAddress}，并在操作完成后通知{@link ChannelFuture}，可能是操作成功，也可能是错误。
      * <p>
      * This will result in having the
      * {@link ChannelOutboundHandler#bind(ChannelHandlerContext, SocketAddress, ChannelPromise)} method
@@ -37,6 +38,7 @@ public interface ChannelOutboundInvoker {
     /**
      * Request to connect to the given {@link SocketAddress} and notify the {@link ChannelFuture} once the operation
      * completes, either because the operation was successful or because of an error.
+     * 请求连接到给定的{@link SocketAddress}，并在操作完成后通知{@link ChannelFuture}，可能是操作成功，也可能是错误。
      * <p>
      * If the connection fails because of a connection timeout, the {@link ChannelFuture} will get failed with
      * a {@link ConnectTimeoutException}. If it fails because of connection refused a {@link ConnectException}
@@ -53,6 +55,7 @@ public interface ChannelOutboundInvoker {
      * Request to connect to the given {@link SocketAddress} while bind to the localAddress and notify the
      * {@link ChannelFuture} once the operation completes, either because the operation was successful or because of
      * an error.
+     * 请求连接到给定的{@link SocketAddress}，并在操作完成后通知{@link ChannelFuture}，可能是操作成功，也可能是错误。
      * <p>
      * This will result in having the
      * {@link ChannelOutboundHandler#connect(ChannelHandlerContext, SocketAddress, SocketAddress, ChannelPromise)}
@@ -64,6 +67,7 @@ public interface ChannelOutboundInvoker {
     /**
      * Request to disconnect from the remote peer and notify the {@link ChannelFuture} once the operation completes,
      * either because the operation was successful or because of an error.
+     * 请求断开连接，并在操作完成后通知{@link ChannelFuture}，原因可能是操作成功，也可能是错误。
      * <p>
      * This will result in having the
      * {@link ChannelOutboundHandler#disconnect(ChannelHandlerContext, ChannelPromise)}
@@ -76,7 +80,7 @@ public interface ChannelOutboundInvoker {
      * Request to close the {@link Channel} and notify the {@link ChannelFuture} once the operation completes,
      * either because the operation was successful or because of
      * an error.
-     *
+     * 请求关闭链接
      * After it is closed it is not possible to reuse it again.
      * <p>
      * This will result in having the
@@ -90,6 +94,8 @@ public interface ChannelOutboundInvoker {
      * Request to deregister from the previous assigned {@link EventExecutor} and notify the
      * {@link ChannelFuture} once the operation completes, either because the operation was successful or because of
      * an error.
+     * 取消注册，并在操作完成后通知{@link ChannelFuture}，原因可能是操作成功，也可能是错误。
+     *
      * <p>
      * This will result in having the
      * {@link ChannelOutboundHandler#deregister(ChannelHandlerContext, ChannelPromise)}
@@ -102,6 +108,7 @@ public interface ChannelOutboundInvoker {
     /**
      * Request to bind to the given {@link SocketAddress} and notify the {@link ChannelFuture} once the operation
      * completes, either because the operation was successful or because of an error.
+     * 请求绑定到给定的{@link SocketAddress}，并在操作完成后通知{@link ChannelFuture}，原因可能是操作成功，也可能是错误。
      *
      * The given {@link ChannelPromise} will be notified.
      * <p>
@@ -192,6 +199,9 @@ public interface ChannelOutboundInvoker {
      * read, and triggers a
      * {@link ChannelInboundHandler#channelReadComplete(ChannelHandlerContext) channelReadComplete} event so the
      * handler can decide to continue reading.  If there's a pending read operation already, this method does nothing.
+     * 请求从{@link Channel}读取数据到第一个入站缓冲区，如果读取数据，则触发{@link ChannelInboundHandler#channelRead(ChannelHandlerContext, Object)
+     * 事件，并触发{@link channelboundhandler #channelReadComplete(ChannelHandlerContext) channelReadComplete}事件，以便处理程序可以决定继续读取。
+     * 如果已经有一个挂起的读操作，这个方法什么也不做。
      * <p>
      * This will result in having the
      * {@link ChannelOutboundHandler#read(ChannelHandlerContext)}

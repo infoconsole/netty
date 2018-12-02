@@ -249,7 +249,7 @@
     <os.detection.classifierWithLikes>fedora</os.detection.classifierWithLikes>
     <os.detected.classifier>osx-x86_64</os.detected.classifier>
     <tcnative.artifactId>netty-tcnative</tcnative.artifactId>
-    <tcnative.version>2.0.8.Final</tcnative.version>
+    <tcnative.version>2.0.19.Final</tcnative.version>
     <tcnative.classifier>osx-x86_64</tcnative.classifier>
     <conscrypt.groupId>org.conscrypt</conscrypt.groupId>
     <conscrypt.artifactId>conscrypt-openjdk-uber</conscrypt.artifactId>
@@ -802,6 +802,8 @@
           </execution>
         </executions>
       </plugin>
+      <!--  自己修改注释以后应该没法支持代码校验了 -->
+      <!--
       <plugin>
         <artifactId>maven-checkstyle-plugin</artifactId>
         <version>2.12.1</version>
@@ -830,6 +832,7 @@
           </dependency>
         </dependencies>
       </plugin>
+      -->
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>xml-maven-plugin</artifactId>

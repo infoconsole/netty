@@ -54,7 +54,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     private static final ClosedChannelException DO_CLOSE_CLOSED_CHANNEL_EXCEPTION = ThrowableUtil.unknownStackTrace(
             new ClosedChannelException(), AbstractNioChannel.class, "doClose()");
 
-    private final SelectableChannel ch;
+    private final SelectableChannel javaCh;
     protected final int readInterestOp;
     volatile SelectionKey selectionKey;
     boolean readPending;
@@ -76,19 +76,20 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     /**
      * Create a new instance
      *
-     * @param parent            the parent {@link Channel} by which this instance was created. May be {@code null}
-     * @param ch                the underlying {@link SelectableChannel} on which it operates
-     * @param readInterestOp    the ops to set to receive data from the {@link SelectableChannel}
+     * @param parent         the parent {@link Channel} by which this instance was created. May be {@code null}
+     * @param javaCh         the underlying {@link SelectableChannel} on which it operates
+     * @param readInterestOp the ops to set to receive data from the {@link SelectableChannel}
      */
-    protected AbstractNioChannel(Channel parent, SelectableChannel ch, int readInterestOp) {
+    protected AbstractNioChannel(Channel parent, SelectableChannel javaCh, int readInterestOp) {
+        //this(null, java_ServerSocketChannelImpl, SelectionKey.OP_ACCEPT)
         super(parent);
-        this.ch = ch;
+        this.javaCh = javaCh;
         this.readInterestOp = readInterestOp;
         try {
-            ch.configureBlocking(false);
+            javaCh.configureBlocking(false);
         } catch (IOException e) {
             try {
-                ch.close();
+                javaCh.close();
             } catch (IOException e2) {
                 if (logger.isWarnEnabled()) {
                     logger.warn(
@@ -102,7 +103,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
     @Override
     public boolean isOpen() {
-        return ch.isOpen();
+        return javaCh.isOpen();
     }
 
     @Override
@@ -111,7 +112,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     }
 
     protected SelectableChannel javaChannel() {
-        return ch;
+        return javaCh;
     }
 
     @Override
@@ -381,8 +382,9 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     @Override
     protected void doRegister() throws Exception {
         boolean selected = false;
-        for (;;) {
+        for (; ; ) {
             try {
+                //这里注册了一个SelectionKey  0
                 selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
                 return;
             } catch (CancelledKeyException e) {

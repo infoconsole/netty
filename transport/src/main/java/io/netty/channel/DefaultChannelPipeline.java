@@ -856,6 +856,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelPipeline fireChannelRegistered() {
+        //通道注册回调事件
         AbstractChannelHandlerContext.invokeChannelRegistered(head);
         return this;
     }

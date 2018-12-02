@@ -74,16 +74,19 @@ public final class Unpooled {
 
     /**
      * Big endian byte order.
+     * 大端字节
      */
     public static final ByteOrder BIG_ENDIAN = ByteOrder.BIG_ENDIAN;
 
     /**
      * Little endian byte order.
+     * 小端字节
      */
     public static final ByteOrder LITTLE_ENDIAN = ByteOrder.LITTLE_ENDIAN;
 
     /**
      * A buffer whose capacity is {@code 0}.
+     * 空Buffer
      */
     public static final ByteBuf EMPTY_BUFFER = ALLOC.buffer(0, 0);
 
@@ -355,6 +358,8 @@ public final class Unpooled {
      * Creates a new big-endian buffer whose content is a copy of the
      * specified {@code array}.  The new buffer's {@code readerIndex} and
      * {@code writerIndex} are {@code 0} and {@code array.length} respectively.
+     *
+     * 创建位字节buffer
      */
     public static ByteBuf copiedBuffer(byte[] array) {
         if (array.length == 0) {

@@ -37,12 +37,13 @@ import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 
 /**
- * {@link Bootstrap} sub-class which allows easy bootstrap of {@link ServerChannel}
- *
+ * @author {@link Bootstrap} sub-class which allows easy bootstrap of {@link ServerChannel}
  */
 public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerChannel> {
-
-    private static final InternalLogger logger = InternalLoggerFactory.getInstance(ServerBootstrap.class);
+    /**
+     * 简单日志封装
+     */
+    private static final InternalLogger LOGGER = InternalLoggerFactory.getInstance(ServerBootstrap.class);
 
     private final Map<ChannelOption<?>, Object> childOptions = new LinkedHashMap<ChannelOption<?>, Object>();
     private final Map<AttributeKey<?>, Object> childAttrs = new LinkedHashMap<AttributeKey<?>, Object>();
@@ -50,9 +51,16 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
     private volatile EventLoopGroup childGroup;
     private volatile ChannelHandler childHandler;
 
-    public ServerBootstrap() { }
+    public ServerBootstrap() {
+    }
 
+    /**
+     * 目前还不知道这么设计的原因
+     *
+     * @param bootstrap
+     */
     private ServerBootstrap(ServerBootstrap bootstrap) {
+        //TODO 找出这么设计的原因
         super(bootstrap);
         childGroup = bootstrap.childGroup;
         childHandler = bootstrap.childHandler;
@@ -141,12 +149,12 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
     void init(Channel channel) throws Exception {
         final Map<ChannelOption<?>, Object> options = options0();
         synchronized (options) {
-            setChannelOptions(channel, options, logger);
+            setChannelOptions(channel, options, LOGGER);
         }
-
+        //设置attr
         final Map<AttributeKey<?>, Object> attrs = attrs0();
         synchronized (attrs) {
-            for (Entry<AttributeKey<?>, Object> e: attrs.entrySet()) {
+            for (Entry<AttributeKey<?>, Object> e : attrs.entrySet()) {
                 @SuppressWarnings("unchecked")
                 AttributeKey<Object> key = (AttributeKey<Object>) e.getKey();
                 channel.attr(key).set(e.getValue());
@@ -193,7 +201,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             throw new IllegalStateException("childHandler not set");
         }
         if (childGroup == null) {
-            logger.warn("childGroup is not set. Using parentGroup instead.");
+            LOGGER.warn("childGroup is not set. Using parentGroup instead.");
             childGroup = config.group();
         }
         return this;
@@ -245,9 +253,9 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
             child.pipeline().addLast(childHandler);
 
-            setChannelOptions(child, childOptions, logger);
+            setChannelOptions(child, childOptions, LOGGER);
 
-            for (Entry<AttributeKey<?>, Object> e: childAttrs) {
+            for (Entry<AttributeKey<?>, Object> e : childAttrs) {
                 child.attr((AttributeKey<Object>) e.getKey()).set(e.getValue());
             }
 
@@ -267,7 +275,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
         private static void forceClose(Channel child, Throwable t) {
             child.unsafe().closeForcibly();
-            logger.warn("Failed to register an accepted channel: {}", child, t);
+            LOGGER.warn("Failed to register an accepted channel: {}", child, t);
         }
 
         @Override

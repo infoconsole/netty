@@ -56,6 +56,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
         } else {
             checkAccessible = SystemPropertyUtil.getBoolean(LEGACY_PROP_CHECK_ACCESSIBLE, true);
         }
+        //检查buffer有效性
         checkBounds = SystemPropertyUtil.getBoolean(PROP_CHECK_BOUNDS, true);
         if (logger.isDebugEnabled()) {
             logger.debug("-D{}: {}", PROP_CHECK_ACCESSIBLE, checkAccessible);
@@ -72,6 +73,11 @@ public abstract class AbstractByteBuf extends ByteBuf {
     private int markedWriterIndex;
     private int maxCapacity;
 
+    /**
+     * 实现了最大容量buf
+     *
+     * @param maxCapacity
+     */
     protected AbstractByteBuf(int maxCapacity) {
         if (maxCapacity < 0) {
             throw new IllegalArgumentException("maxCapacity: " + maxCapacity + " (expected: >= 0)");
@@ -107,6 +113,13 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return readerIndex;
     }
 
+    /**
+     * 检查buffer的有效性
+     *
+     * @param readerIndex
+     * @param writerIndex
+     * @param capacity
+     */
     private static void checkIndexBounds(final int readerIndex, final int writerIndex, final int capacity) {
         if (readerIndex < 0 || readerIndex > writerIndex || writerIndex > capacity) {
             throw new IndexOutOfBoundsException(String.format(
@@ -212,17 +225,25 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return this;
     }
 
+    /**
+     * 丢弃掉已读的数据
+     * 主要操作就是复制数据  然后重置读写索引以及mark的读写索引
+     *
+     * @return
+     */
     @Override
     public ByteBuf discardReadBytes() {
         ensureAccessible();
         if (readerIndex == 0) {
             return this;
         }
-
         if (readerIndex != writerIndex) {
             setBytes(0, this, readerIndex, writerIndex - readerIndex);
+            //写索引前移
             writerIndex -= readerIndex;
+            //mark读写索引前移
             adjustMarkers(readerIndex);
+            //读索引设置为0
             readerIndex = 0;
         } else {
             adjustMarkers(readerIndex);
@@ -245,9 +266,13 @@ public abstract class AbstractByteBuf extends ByteBuf {
         }
 
         if (readerIndex >= capacity() >>> 1) {
+            //startIndex   buf   readerIndex  可读长度
             setBytes(0, this, readerIndex, writerIndex - readerIndex);
+            //写索引前移
             writerIndex -= readerIndex;
+            //mark索引前移
             adjustMarkers(readerIndex);
+            //读索引重置
             readerIndex = 0;
         }
         return this;
@@ -264,6 +289,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
                 this.markedWriterIndex = markedWriterIndex - decrement;
             }
         } else {
+            //读写索引减去被丢弃的部分
             this.markedReaderIndex = markedReaderIndex - decrement;
             markedWriterIndex -= decrement;
         }
@@ -348,6 +374,11 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return new SwappedByteBuf(this);
     }
 
+    /**
+     * 获取buffer的某一个值  不改变index
+     * @param index
+     * @return
+     */
     @Override
     public byte getByte(int index) {
         checkIndex(index);
@@ -529,7 +560,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     @Override
     public ByteBuf setBoolean(int index, boolean value) {
-        setByte(index, value? 1 : 0);
+        setByte(index, value ? 1 : 0);
         return this;
     }
 
@@ -667,7 +698,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
         int nLong = length >>> 3;
         int nBytes = length & 7;
-        for (int i = nLong; i > 0; i --) {
+        for (int i = nLong; i > 0; i--) {
             _setLong(index, 0);
             index += 8;
         }
@@ -675,16 +706,16 @@ public abstract class AbstractByteBuf extends ByteBuf {
             _setInt(index, 0);
             // Not need to update the index as we not will use it after this.
         } else if (nBytes < 4) {
-            for (int i = nBytes; i > 0; i --) {
+            for (int i = nBytes; i > 0; i--) {
                 _setByte(index, (byte) 0);
-                index ++;
+                index++;
             }
         } else {
             _setInt(index, 0);
             index += 4;
-            for (int i = nBytes - 4; i > 0; i --) {
+            for (int i = nBytes - 4; i > 0; i--) {
                 _setByte(index, (byte) 0);
-                index ++;
+                index++;
             }
         }
         return this;
@@ -1158,7 +1189,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
         int nLong = length >>> 3;
         int nBytes = length & 7;
-        for (int i = nLong; i > 0; i --) {
+        for (int i = nLong; i > 0; i--) {
             _setLong(wIndex, 0);
             wIndex += 8;
         }
@@ -1166,14 +1197,14 @@ public abstract class AbstractByteBuf extends ByteBuf {
             _setInt(wIndex, 0);
             wIndex += 4;
         } else if (nBytes < 4) {
-            for (int i = nBytes; i > 0; i --) {
+            for (int i = nBytes; i > 0; i--) {
                 _setByte(wIndex, (byte) 0);
                 wIndex++;
             }
         } else {
             _setInt(wIndex, 0);
             wIndex += 4;
-            for (int i = nBytes - 4; i > 0; i --) {
+            for (int i = nBytes - 4; i > 0; i--) {
                 _setByte(wIndex, (byte) 0);
                 wIndex++;
             }
@@ -1356,10 +1387,10 @@ public abstract class AbstractByteBuf extends ByteBuf {
         }
 
         StringBuilder buf = new StringBuilder()
-            .append(StringUtil.simpleClassName(this))
-            .append("(ridx: ").append(readerIndex)
-            .append(", widx: ").append(writerIndex)
-            .append(", cap: ").append(capacity());
+                .append(StringUtil.simpleClassName(this))
+                .append("(ridx: ").append(readerIndex)
+                .append(", widx: ").append(writerIndex)
+                .append(", cap: ").append(capacity());
         if (maxCapacity != Integer.MAX_VALUE) {
             buf.append('/').append(maxCapacity);
         }
@@ -1446,6 +1477,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
      * if the buffer was released before.
      */
     protected final void ensureAccessible() {
+        //需要检查 checkAccessible=true
         if (checkAccessible && internalRefCnt() == 0) {
             throw new IllegalReferenceCountException(0);
         }
@@ -1454,6 +1486,8 @@ public abstract class AbstractByteBuf extends ByteBuf {
     /**
      * Returns the reference count that is used internally by {@link #ensureAccessible()} to try to guard
      * against using the buffer after it was released (best-effort).
+     * <p>
+     * 返回buff被引用的次数
      */
     int internalRefCnt() {
         return refCnt();

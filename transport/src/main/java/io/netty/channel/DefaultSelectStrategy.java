@@ -23,10 +23,12 @@ import io.netty.util.IntSupplier;
 final class DefaultSelectStrategy implements SelectStrategy {
     static final SelectStrategy INSTANCE = new DefaultSelectStrategy();
 
-    private DefaultSelectStrategy() { }
+    private DefaultSelectStrategy() {
+    }
 
     @Override
     public int calculateStrategy(IntSupplier selectSupplier, boolean hasTasks) throws Exception {
+        System.out.println("calculateStrategy  has task  is " + hasTasks);
         return hasTasks ? selectSupplier.get() : SelectStrategy.SELECT;
     }
 }

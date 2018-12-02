@@ -59,7 +59,7 @@ import java.lang.annotation.Target;
  * (using {@link AttributeKey}s) which is specific to the handler.
  *
  * <h3>State management</h3>
- *
+ * <p>
  * A {@link ChannelHandler} often needs to store some stateful information.
  * The simplest and recommended approach is to use member variables:
  * <pre>
@@ -104,7 +104,7 @@ import java.lang.annotation.Target;
  * </pre>
  *
  * <h4>Using {@link AttributeKey}s</h4>
- *
+ * <p>
  * Although it's recommended to use member variables to store the state of a
  * handler, for some reason you might not want to create many handler instances.
  * In such a case, you can use {@link AttributeKey}s which is provided by
@@ -179,17 +179,20 @@ public interface ChannelHandler {
 
     /**
      * Gets called after the {@link ChannelHandler} was added to the actual context and it's ready to handle events.
+     * 回调方法，当ChannelHandler被添加进pipeline的ctx后触发
      */
     void handlerAdded(ChannelHandlerContext ctx) throws Exception;
 
     /**
      * Gets called after the {@link ChannelHandler} was removed from the actual context and it doesn't handle events
      * anymore.
+     * * 回调方法，当ChannelHandler被移除出pipeline的ctx后触发
      */
     void handlerRemoved(ChannelHandlerContext ctx) throws Exception;
 
     /**
      * Gets called if a {@link Throwable} was thrown.
+     * 回调方法，当捕捉到异常的时候进行调用通知
      *
      * @deprecated is part of {@link ChannelInboundHandler}
      */

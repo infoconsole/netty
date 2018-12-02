@@ -39,14 +39,17 @@ public abstract class InternalLoggerFactory {
     private static InternalLoggerFactory newDefaultFactory(String name) {
         InternalLoggerFactory f;
         try {
+            //优先使用Slf4JLoggerFactory
             f = new Slf4JLoggerFactory(true);
             f.newInstance(name).debug("Using SLF4J as the default logging framework");
         } catch (Throwable ignore1) {
             try {
+                //然后使用Log4JLoggerFactory
                 f = Log4JLoggerFactory.INSTANCE;
                 f.newInstance(name).debug("Using Log4J as the default logging framework");
             } catch (Throwable ignore2) {
                 try {
+                    //然后使用
                     f = Log4J2LoggerFactory.INSTANCE;
                     f.newInstance(name).debug("Using Log4J2 as the default logging framework");
                 } catch (Throwable ignore3) {

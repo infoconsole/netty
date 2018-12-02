@@ -38,8 +38,10 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
     /**
      * @see AbstractNioChannel#AbstractNioChannel(Channel, SelectableChannel, int)
      */
-    protected AbstractNioMessageChannel(Channel parent, SelectableChannel ch, int readInterestOp) {
-        super(parent, ch, readInterestOp);
+    //this(null, java channel, SelectionKey.OP_ACCEPT)
+    //SelectableChannel  参数，绑定了通过spi拿到select的javaChannel 默认java_ServerSocketChannelImpl
+    protected AbstractNioMessageChannel(Channel parent, SelectableChannel javaCh, int readInterestOp) {
+        super(parent, javaCh, readInterestOp);
     }
 
     @Override
