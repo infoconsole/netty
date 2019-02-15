@@ -180,18 +180,22 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
                 final ChannelPipeline pipeline = ch.pipeline();
                 ChannelHandler handler = config.handler();
                 if (handler != null) {
+                    System.out.println("this handler is " + handler.toString());
                     pipeline.addLast(handler);
                 }
-
-                ch.eventLoop().execute(new Runnable() {
+                //这个ServerBootstrapAcceptor 需要异步加到任务中去加，还不确定用意
+                Runnable task = new Runnable() {
                     @Override
                     public void run() {
                         pipeline.addLast(new ServerBootstrapAcceptor(
                                 ch, currentChildGroup, currentChildHandler, currentChildOptions, currentChildAttrs));
                     }
-                });
+                };
+                ch.eventLoop().execute(task);
             }
         });
+
+        System.out.println("bossGroup eventloop pipeline add handler success,handler is " + config.handler());
     }
 
     @Override

@@ -405,7 +405,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         //该方法应该是不会抛出异常的  接收的都是Throwable
         for (; ; ) {
             try {
-                System.out.println("EventLoop thread is " + Thread.currentThread().getName() + " and select");
+                //TODO 关闭调试
+                //System.out.println("EventLoop thread is " + Thread.currentThread().getName() + " and select");
                 switch (selectStrategy.calculateStrategy(selectNowSupplier, hasTasks())) {
                     case SelectStrategy.CONTINUE:
                         continue;

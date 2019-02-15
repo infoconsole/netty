@@ -57,10 +57,12 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
         super.doBeginRead();
     }
 
+    @SuppressWarnings("AliDeprecation")
     private final class NioMessageUnsafe extends AbstractNioUnsafe {
 
         private final List<Object> readBuf = new ArrayList<Object>();
 
+        @SuppressWarnings("AliDeprecation")
         @Override
         public void read() {
             assert eventLoop().inEventLoop();

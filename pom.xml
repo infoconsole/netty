@@ -290,20 +290,23 @@
     <module>transport-native-unix-common-tests</module>
     <module>transport-native-unix-common</module>
     <module>transport-native-epoll</module>
+    <!--
     <module>transport-native-kqueue</module>
+    -->
     <module>transport-rxtx</module>
     <module>transport-sctp</module>
     <module>transport-udt</module>
     <module>handler</module>
     <module>handler-proxy</module>
-    <module>example</module>
-    <module>testsuite</module>
-    <module>testsuite-autobahn</module>
-    <module>testsuite-http2</module>
-    <module>testsuite-osgi</module>
-    <module>testsuite-shading</module>
+
+    <!--
+    <module>example</module>c
     <module>microbench</module>
+    -->
     <module>bom</module>
+    <module>rpc-common</module>
+    <module>rpc-server</module>
+    <module>rpc-client</module>
   </modules>
 
   <dependencyManagement>
@@ -833,6 +836,7 @@
         </dependencies>
       </plugin>
       -->
+      <!--
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>xml-maven-plugin</artifactId>
@@ -858,6 +862,7 @@
           <useDefaultFormatFileSet>false</useDefaultFormatFileSet>
         </configuration>
       </plugin>
+      -->
       <!-- Download the npn-boot.jar in advance to add it to the boot classpath. -->
       <plugin>
         <artifactId>maven-dependency-plugin</artifactId>

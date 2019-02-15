@@ -1,7 +1,5 @@
-String[] templateDirs = [properties["collection.template.dir"],
-                         properties["collection.template.test.dir"]]
-String[] outputDirs = [properties["collection.src.dir"],
-                       properties["collection.testsrc.dir"]]
+String[] templateDirs = [properties["collection.template.dir"]]
+String[] outputDirs = [properties["collection.src.dir"]]
 
 templateDirs.eachWithIndex { templateDir, i ->
     convertSources templateDir, outputDirs[i]

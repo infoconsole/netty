@@ -10,11 +10,6 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 
 import java.net.InetSocketAddress;
 
-/**
- * @author oldflame-jm
- * @create 2018/6/6
- * ${DESCRIPTION}
- */
 
 /**
  * @author oldflame-jm
@@ -33,7 +28,7 @@ public class EchoServer {
         final EchoServerHandler serverHandler = new EchoServerHandler();
         EventLoopGroup group = new NioEventLoopGroup();
         try {
-            ServerBootstrap b = new ServerBootstrap() ;
+            ServerBootstrap b = new ServerBootstrap();
             b.group(group).channel(NioServerSocketChannel.class)
                     .localAddress(new InetSocketAddress(port))
                     .childHandler(new ChannelInitializer<SocketChannel>() {

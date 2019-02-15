@@ -34,7 +34,7 @@ public abstract class AbstractEventExecutor extends AbstractExecutorService impl
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(AbstractEventExecutor.class);
 
     static final long DEFAULT_SHUTDOWN_QUIET_PERIOD = 2;
-    static final long DEFAULT_SHUTDOWN_TIMEOUT = 15;
+    static final long DEFAULT_SHUTDOWN_TIMEOUT = 1500;
 
     private final EventExecutorGroup parent;
     private final Collection<EventExecutor> selfCollection = Collections.<EventExecutor>singleton(this);

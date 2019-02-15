@@ -423,6 +423,8 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
         // It's not very likely for a user to put more than one handler of the same type, but make sure to avoid
         // any name conflicts.  Note that we don't cache the names generated here.
+        // 用户不太可能放置多个相同类型的处理程序，但是要确保避免任何名称冲突,如果名字相同则在后面增加数字
+        // 注意，我们不缓存这里生成的名称。
         if (context0(name) != null) {
             String baseName = name.substring(0, name.length() - 1); // Strip the trailing '0'.
             for (int i = 1;; i ++) {
